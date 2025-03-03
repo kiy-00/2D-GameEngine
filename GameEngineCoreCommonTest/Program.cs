@@ -8,10 +8,7 @@ using SkiaSharp;
 using Keys = GameEngine.Core.Keys;
 using Time = GameEngine.Core.Time;
 using WinFormsTimer = System.Windows.Forms.Timer;
-using static System.Formats.Asn1.AsnWriter;
 using System.Drawing;
-using System.Security.Cryptography.Xml;
-using System.Security.Policy;
 
 namespace GameEngineTest
 {
@@ -37,6 +34,17 @@ namespace GameEngineTest
             "输入响应测试",
             "相机跟随测试"
         };
+
+        // 添加此属性以减少闪烁
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= 0x02000000; // WS_EX_COMPOSITED 标志
+                return cp;
+            }
+        }
 
         [STAThread]
         static void Main()
@@ -75,10 +83,21 @@ namespace GameEngineTest
             FormClosed += GameEngineTest_FormClosed;
             Resize += GameEngineTest_Resize;
 
+            // 在这里添加调试代码
+            KeyDown += (s, e) =>
+            {
+                System.Diagnostics.Debug.WriteLine($"键盘按下: {e.KeyCode}");
+            };
+
             // 创建重绘计时器
             WinFormsTimer timer = new WinFormsTimer();
             timer.Interval = 16; // 约60 FPS
-            timer.Tick += (s, e) => Invalidate();
+            timer.Tick += (s, e) =>
+            {
+                // 只在需要时重绘
+                if (renderBitmap != null && !renderBitmap.IsEmpty)
+                    Invalidate(false); // false 参数表示不立即验证客户区域
+            };
             timer.Start();
 
             isInitialized = true;
@@ -107,8 +126,10 @@ namespace GameEngineTest
             world.AddSystem(inputManager);
 
             // 场景管理器
+            // 场景管理器
             sceneManager = SceneManager.Instance;
             sceneManager.SetEnableUpdate(true);
+          
 
             // 设置回调
             gameLoop.UpdateCallback = GameUpdate;
@@ -147,9 +168,11 @@ namespace GameEngineTest
             mainScene.Load();
             mainScene.Activate();
             sceneManager.ChangeScene("MainScene", true);
+            // 在CreateMainScene方法的末尾添加
+            //mainScene.World.AddEntity(cameraEntity);
+            //mainScene.World.AddEntity(playerEntity);
 
             System.Diagnostics.Debug.WriteLine("主场景创建完成");
-
         }
 
         private Entity CreatePlayerEntity()
@@ -257,7 +280,6 @@ namespace GameEngineTest
                 testEntities.Add(entity);
             }
 
-          
             System.Diagnostics.Debug.WriteLine($"创建了 {testEntities.Count} 个测试实体");
         }
 
@@ -293,7 +315,6 @@ namespace GameEngineTest
             {
                 currentTestIndex = (currentTestIndex + 1) % testNames.Length;
                 System.Diagnostics.Debug.WriteLine($"切换到测试: {testNames[currentTestIndex]}");
-
 
                 // 为新测试准备场景
                 if (currentTestIndex == 2) // 场景切换测试
@@ -389,18 +410,29 @@ namespace GameEngineTest
                 camera.Target = playerEntity;
                 camera.LerpFactor = 0.1f; // 平滑跟随
                 System.Diagnostics.Debug.WriteLine("相机设置为跟随玩家");
-
             }
         }
 
         private void PrepareSceneSwitchingTest()
         {
+            // 检查SecondScene是否已存在
+            Scene existingScene = sceneManager.GetScene("SecondScene");
+            if (existingScene != null)
+            {
+                System.Diagnostics.Debug.WriteLine("第二场景已存在，无需重新创建");
+                return;
+            }
+            System.Diagnostics.Debug.WriteLine("开始创建第二场景");
+
             // 创建第二个场景
             var secondScene = new Scene("SecondScene");
             sceneManager.RegisterScene(secondScene);
+            System.Diagnostics.Debug.WriteLine("第二场景已注册到场景管理器");
 
-            // 创建一些不同的实体
-            var backgroundEntity = world.CreateEntity("Background");
+            // 直接使用场景的World创建实体（这样实体已经自动与场景的World关联）
+            var backgroundEntity = secondScene.World.CreateEntity("Background");
+
+            // 添加组件
             var bgTransform = new Transform2D(new Vector2(ClientSize.Width / 2, ClientSize.Height / 2));
             backgroundEntity.AddComponent(bgTransform);
 
@@ -413,15 +445,16 @@ namespace GameEngineTest
             SKBitmap bgBitmap = new SKBitmap(ClientSize.Width, ClientSize.Height);
             using (SKCanvas canvas = new SKCanvas(bgBitmap))
             {
+                // 原有的渐变背景创建代码...
                 using (SKPaint paint = new SKPaint())
                 {
                     paint.Shader = SKShader.CreateLinearGradient(
                         new SKPoint(0, 0),
                         new SKPoint(0, ClientSize.Height),
                         new SKColor[] {
-                            SKColors.DarkBlue,
-                            SKColors.Purple,
-                            SKColors.DarkRed
+                    SKColors.DarkBlue,
+                    SKColors.Purple,
+                    SKColors.DarkRed
                         },
                         new float[] { 0, 0.5f, 1 },
                         SKShaderTileMode.Clamp
@@ -442,13 +475,19 @@ namespace GameEngineTest
                     }
                 }
 
-                // 添加文字
+                // 添加文字 - 使用支持中文的字体
+                using (SKTypeface chineseTypeface = SKTypeface.FromFamilyName(
+                    "Microsoft YaHei",
+                    SKFontStyleWeight.Normal,
+                    SKFontStyleWidth.Normal,
+                    SKFontStyleSlant.Upright))
                 using (SKPaint paint = new SKPaint
                 {
                     Color = SKColors.White,
                     TextSize = 40,
                     IsAntialias = true,
-                    TextAlign = SKTextAlign.Center
+                    TextAlign = SKTextAlign.Center,
+                    Typeface = chineseTypeface ?? SKTypeface.FromFamilyName("SimHei") ?? SKTypeface.Default
                 })
                 {
                     canvas.DrawText("第二场景", ClientSize.Width / 2, ClientSize.Height / 2, paint);
@@ -456,12 +495,10 @@ namespace GameEngineTest
             }
             bgSprite.Texture = bgBitmap;
 
-            // 加载并准备切换场景
+            // 确保场景被正确加载和激活
             secondScene.Load();
-            System.Diagnostics.Debug.WriteLine("第二场景已创建，按下空格键切换");
-
+            System.Diagnostics.Debug.WriteLine("第二场景已加载");
         }
-
         private void HandleInputResponseTest(float deltaTime)
         {
             // 获取鼠标位置和状态
@@ -515,15 +552,41 @@ namespace GameEngineTest
                     break;
 
                 case 2: // 场景切换测试
+                        // 添加调试输出以确认空格键被按下
                     if (inputManager.IsKeyPressed(Keys.Space))
                     {
-                        // 在主场景和第二场景之间切换
-                        string currentSceneName = sceneManager.GetActiveScene()?.Name;
-                        string targetSceneName = currentSceneName == "MainScene" ? "SecondScene" : "MainScene";
+                        System.Diagnostics.Debug.WriteLine("空格键被按下，尝试切换场景");
 
-                        sceneManager.ChangeScene(targetSceneName, true);
-                        System.Diagnostics.Debug.WriteLine($"切换到场景: {targetSceneName}");
+                        // 获取活动场景
+                        Scene activeScene = sceneManager.GetActiveScene();
+                        if (activeScene != null)
+                        {
+                            string currentSceneName = activeScene.Name;
+                            string targetSceneName = currentSceneName == "MainScene" ? "SecondScene" : "MainScene";
 
+                            System.Diagnostics.Debug.WriteLine($"当前场景: {currentSceneName}, 目标场景: {targetSceneName}");
+
+                            // 确保目标场景存在
+                            Scene targetScene = sceneManager.GetScene(targetSceneName);
+                            if (targetScene == null)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"错误: 目标场景 {targetSceneName} 不存在");
+                                if (targetSceneName == "SecondScene")
+                                {
+                                    // 如果第二场景不存在，尝试创建它
+                                    PrepareSceneSwitchingTest();
+                                }
+                                return;
+                            }
+
+                            // 尝试切换场景
+                            bool success = sceneManager.ChangeScene(targetSceneName, true);
+                            System.Diagnostics.Debug.WriteLine($"场景切换 {(success ? "成功" : "失败")}: {targetSceneName}");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine("错误: 没有活动场景");
+                        }
                     }
                     break;
 
@@ -633,11 +696,13 @@ namespace GameEngineTest
                         DrawDebugInfo(canvas);
                     }
                 }
+
+                // 让UI处理完所有待处理事件，减少闪烁
+                Application.DoEvents();
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"渲染错误: {ex.Message}");
-
             }
         }
 
@@ -648,6 +713,29 @@ namespace GameEngineTest
             if (camera == null)
                 return;
 
+            // 获取当前活动场景
+            Scene activeScene = sceneManager.GetActiveScene();
+
+            // 主场景使用主World的实体
+            if (activeScene == null || activeScene.Name == "MainScene")
+            {
+                RenderMainWorldEntities(canvas, camera);
+            }
+            // 其他场景使用各自场景World的实体
+            else
+            {
+                var sceneEntities = activeScene.World.GetAllEntities();
+                System.Diagnostics.Debug.WriteLine($"渲染场景 {activeScene.Name} 中的 {sceneEntities.Count} 个实体");
+
+                foreach (var entity in sceneEntities)
+                {
+                    RenderEntity(canvas, entity, camera);
+                }
+            }
+        }
+
+        private void RenderMainWorldEntities(SKCanvas canvas, Camera2D camera)
+        {
             // 获取所有实体
             var entities = world.GetAllEntities();
 
@@ -662,14 +750,7 @@ namespace GameEngineTest
 
             // 渲染玩家
             RenderEntity(canvas, playerEntity, camera);
-
-            // 如果是相机跟随测试，绘制边界框
-            if (currentTestIndex == 4)
-            {
-                DrawCameraBounds(canvas, camera);
-            }
         }
-
         private void RenderEntity(SKCanvas canvas, Entity entity, Camera2D camera)
         {
             if (entity == null)
@@ -729,11 +810,14 @@ namespace GameEngineTest
 
         private void DrawDebugInfo(SKCanvas canvas)
         {
+            // 创建支持中文字体的SKTypeface
+            using (SKTypeface typeface = SKTypeface.FromFamilyName("Microsoft YaHei", SKFontStyleWeight.Normal, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright))
             using (SKPaint textPaint = new SKPaint
             {
                 Color = SKColors.White,
                 TextSize = 14,
-                IsAntialias = true
+                IsAntialias = true,
+                Typeface = typeface  // 使用支持中文的字体
             })
             {
                 // 玩家信息
@@ -742,20 +826,25 @@ namespace GameEngineTest
                     ? $"({playerTransform.Position.X:F1}, {playerTransform.Position.Y:F1})"
                     : "未知";
 
+                // 获取当前活动场景名称
+                Scene activeScene = sceneManager.GetActiveScene();
+                string currentSceneName = activeScene != null ? activeScene.Name : "无";
+
                 // FPS和时间信息
                 canvas.DrawText($"FPS: {Time.FramesPerSecond:F1}", 10, 20, textPaint);
                 canvas.DrawText($"总时间: {Time.TotalTime:F1}秒", 10, 40, textPaint);
                 canvas.DrawText($"玩家位置: {playerPos}", 10, 60, textPaint);
                 canvas.DrawText($"实体总数: {world.GetAllEntities().Count}", 10, 80, textPaint);
+                canvas.DrawText($"当前场景: {currentSceneName}", 10, 100, textPaint);
 
                 // 当前测试
                 textPaint.Color = SKColors.Yellow;
-                canvas.DrawText($"当前测试: {testNames[currentTestIndex]}", 10, 100, textPaint);
+                canvas.DrawText($"当前测试: {testNames[currentTestIndex]}", 10, 120, textPaint);
 
                 // 控制说明
                 textPaint.Color = SKColors.LightGray;
                 textPaint.TextSize = 12;
-                canvas.DrawText("Tab键切换测试 | F1键切换调试信息 | Esc键退出", 10, 120, textPaint);
+                canvas.DrawText("Tab键切换测试 | F1键切换调试信息 | Esc键退出", 10, 140, textPaint);
 
                 // 根据当前测试显示特定说明
                 string instructions = "";
@@ -777,7 +866,7 @@ namespace GameEngineTest
                         instructions = "WASD/方向键移动，相机会跟随玩家";
                         break;
                 }
-                canvas.DrawText(instructions, 10, 140, textPaint);
+                canvas.DrawText(instructions, 10, 160, textPaint);
             }
         }
 
@@ -806,7 +895,6 @@ namespace GameEngineTest
                     System.Drawing.Brushes.Red, 10, 10);
 
                 System.Diagnostics.Debug.WriteLine($"绘制错误: {ex.Message}");
-
             }
         }
 
@@ -838,6 +926,8 @@ namespace GameEngineTest
 
             if (e.Button == System.Windows.Forms.MouseButtons.Left)
                 mouseState.SetButtonDown(MouseButton.Left);
+            else if (e.Button == System.Windows.Forms.MouseButtons.Right)
+                mouseState.SetButtonDown(MouseButton.Right);
             else if (e.Button == System.Windows.Forms.MouseButtons.Middle)
                 mouseState.SetButtonDown(MouseButton.Middle);
 
@@ -871,7 +961,6 @@ namespace GameEngineTest
             renderBitmap?.Dispose();
 
             System.Diagnostics.Debug.WriteLine("测试程序已关闭");
-
         }
 
         #endregion
