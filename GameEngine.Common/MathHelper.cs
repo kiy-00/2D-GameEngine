@@ -173,5 +173,10 @@ namespace GameEngine.Common
         {
             return value * value * value;
         }
+
+        public static float Min(double a, float b)
+        {
+            return (float)Math.Min(a, b);
+        }
     }
 }

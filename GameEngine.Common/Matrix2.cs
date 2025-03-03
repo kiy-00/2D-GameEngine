@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Drawing;
 
 namespace GameEngine.Common
 {
@@ -264,6 +265,90 @@ namespace GameEngine.Common
             return $"[{M11}, {M12}]\n[{M21}, {M22}]";
         }
 
+        /// <summary>
+        /// 将点数组通过矩阵变换
+        /// </summary>
+        public void TransformPoints(PointF[] points)
+        {
+            if (points == null)
+                throw new ArgumentNullException(nameof(points));
+
+            for (int i = 0; i < points.Length; i++)
+            {
+                float x = points[i].X;
+                float y = points[i].Y;
+
+                points[i] = new PointF(
+                    M11 * x + M12 * y,
+                    M21 * x + M22 * y);
+            }
+        }
+
+        /// <summary>
+        /// 平移矩阵
+        /// </summary>
+        /// <remarks>
+        /// 注意：2x2矩阵不能表示平移变换，这个方法在2x2矩阵中不适用
+        /// 在2D变换中，平移需要使用3x3矩阵或仿射变换
+        /// 此方法保留仅为兼容性，实际上不改变矩阵
+        /// </remarks>
+        public void Translate(float x, float y)
+        {
+            // 2x2矩阵无法表示平移，这里不做任何操作
+            // 实际上，平移变换需要使用3x3矩阵（仿射变换）
+            // 如需要实现平移，应当使用Matrix3x2或更高维度的矩阵
+            throw new NotSupportedException("2x2 matrices cannot represent translation. Use Matrix3x2 or higher dimensions instead.");
+        }
+
+        /// <summary>
+        /// 围绕指定点旋转矩阵
+        /// </summary>
+        /// <remarks>
+        /// 注意：2x2矩阵不能直接表示围绕任意点的旋转
+        /// 在2D变换中，围绕任意点旋转需要使用3x3矩阵或仿射变换
+        /// 此方法保留仅为兼容性
+        /// </remarks>
+        public void RotateAt(float angle, PointF center)
+        {
+            // 2x2矩阵无法表示围绕任意点的旋转
+            // 实际上，这需要平移-旋转-平移的组合变换，需要使用更高维度的矩阵
+            throw new NotSupportedException("2x2 matrices cannot represent rotation around arbitrary points. Use Matrix3x2 or higher dimensions instead.");
+        }
+
+        /// <summary>
+        /// 缩放矩阵
+        /// </summary>
+        public void Scale(float scaleX, float scaleY)
+        {
+            // 将当前矩阵与缩放矩阵相乘
+            Matrix2 scale = CreateScale(scaleX, scaleY);
+
+            // 计算结果
+            float tempM11 = M11 * scale.M11 + M12 * scale.M21;
+            float tempM12 = M11 * scale.M12 + M12 * scale.M22;
+            float tempM21 = M21 * scale.M11 + M22 * scale.M21;
+            float tempM22 = M21 * scale.M12 + M22 * scale.M22;
+
+            // 更新当前矩阵
+            M11 = tempM11;
+            M12 = tempM12;
+            M21 = tempM21;
+            M22 = tempM22;
+        }
+
+        /// <summary>
+        /// 创建平移矩阵
+        /// </summary>
+        /// <remarks>
+        /// 注意：2x2矩阵不能表示平移变换
+        /// 在2D变换中，平移需要使用3x3矩阵或仿射变换
+        /// 此方法保留仅为兼容性，返回单位矩阵
+        /// </remarks>
+        public static Matrix2 CreateTranslation(Vector2 position)
+        {
+            // 2x2矩阵无法表示平移变换
+            throw new NotSupportedException("2x2 matrices cannot represent translation. Use Matrix3x2 or higher dimensions instead.");
+        }
         #endregion
     }
 }
